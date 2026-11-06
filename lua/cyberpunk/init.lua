@@ -1,104 +1,114 @@
 local M = {}
 
-M.styles_list = { 'dark', 'darker', 'cool', 'deep', 'warm', 'warmer', 'light' }
+--- The :colorscheme name for each style.
+M.colorschemes = { dark = 'cyberpunk', neon = 'cyberpunkNeon' }
 
----Change cyberpunk option (vim.g.cyberpunk_config.option)
----It can't be changed directly by modifying that field due to a Neovim lua bug with global variables (cyberpunk_config is a global variable)
----@param opt string: option name
----@param value any: new value
-function M.set_options(opt, value)
-    local cfg = vim.g.cyberpunk_config
-    cfg[opt] = value
-    vim.g.cyberpunk_config = cfg
-end
+local defaults = {
+    style = 'dark', -- 'dark' or 'neon'; the :colorscheme commands set this
+    toggle_style_key = nil, -- e.g. '<leader>ts' to cycle through toggle_style_list
+    toggle_style_list = { 'dark', 'neon' },
+    transparent = false, -- leave the editor background unset
+    term_colors = true, -- colour :terminal buffers from the palette
+    ending_tildes = false, -- show ~ on the lines after the end of a buffer
+    cmp_itemkind_reverse = false, -- nvim-cmp item kinds as reversed blocks
 
----Apply the colorscheme (same as ':colorscheme cyberpunk')
----@param name string|nil: colorscheme name to report via vim.g.colors_name
-function M.colorscheme(name)
-    vim.cmd("hi clear")
-    if vim.fn.exists("syntax_on") then vim.cmd("syntax reset") end
-    vim.o.termguicolors = true
-    vim.g.colors_name = name or "cyberpunk"
-    if vim.o.background == 'light' then
-        M.set_options('style', 'light')
-    elseif vim.g.cyberpunk_config.style == 'light' then
-        M.set_options('style', 'light')
-    end
-    require('cyberpunk.highlights').setup()
-    require('cyberpunk.terminal').setup()
-end
-
----Toggle between cyberpunk styles
-function M.toggle()
-    local index = vim.g.cyberpunk_config.toggle_style_index + 1
-    if index > #vim.g.cyberpunk_config.toggle_style_list then index = 1 end
-    M.set_options('style', vim.g.cyberpunk_config.toggle_style_list[index])
-    M.set_options('toggle_style_index', index)
-    if vim.g.cyberpunk_config.style == 'light' then
-        vim.o.background = 'light'
-    else
-        vim.o.background = 'dark'
-    end
-    vim.api.nvim_command('colorscheme cyberpunk')
-end
-
-local default_config = {
-    -- Main options --
-    style = 'dark',    -- choose between 'dark', 'darker', 'cool', 'deep', 'warm', 'warmer' and 'light'
-    toggle_style_key = nil,
-    toggle_style_list = M.styles_list,
-    transparent = false,     -- don't set background
-    term_colors = true,      -- if true enable the terminal
-    ending_tildes = false,    -- show the end-of-buffer tildes
-    cmp_itemkind_reverse = false,    -- reverse item kind highlights in cmp menu
-
-    -- Changing Formats --
+    -- Text attributes per syntax role: 'none' or comma-separated
+    -- 'bold', 'italic', 'underline', 'undercurl', 'strikethrough', ...
     code_style = {
         comments = 'italic',
-        keywords = 'none',
+        keywords = 'bold',
         functions = 'none',
         strings = 'none',
-        variables = 'none'
+        variables = 'none',
+        constants = 'none',
     },
 
-    -- Lualine options --
     lualine = {
-        transparent = false, -- center bar (c) transparency
+        transparent = false, -- no background behind lualine's middle (c) section
     },
 
-    -- Custom Highlights --
-    colors = {}, -- Override default colors
-    highlights = {}, -- Override highlight groups
+    colors = {}, -- palette overrides: { bg0 = '#000000' }
+    -- Highlight group overrides. Only the fields given are replaced, and
+    -- '$name' refers to a palette colour: { Comment = { fg = '$cyan', fmt = 'none' } }
+    highlights = {},
 
-    -- Plugins Related --
     diagnostics = {
-        darker = true, -- darker colors for diagnostic
-        undercurl = true,   -- use undercurl for diagnostics
-        background = true,    -- use background color for virtual text
+        darker = true, -- muted colours for diagnostic virtual text
+        undercurl = true, -- undercurl rather than underline diagnostics
+        background = true, -- tinted background behind virtual text
     },
 }
 
----Setup cyberpunk options, without applying colorscheme
----@param opts table: a table containing options
+M.config = vim.deepcopy(defaults)
+
+--- Sets options without applying the theme (`:colorscheme` does that).
+---@param opts table|nil see `defaults` above
 function M.setup(opts)
-    if not vim.g.cyberpunk_config or not vim.g.cyberpunk_config.loaded then    -- if it's the first time setup() is called
-        vim.g.cyberpunk_config = vim.tbl_deep_extend('keep', vim.g.cyberpunk_config or {}, default_config)
-        M.set_options('loaded', true)
-        M.set_options('toggle_style_index', 0)
+    opts = opts or {}
+    M.config = vim.tbl_deep_extend('force', M.config, opts)
+    -- Lists would be merged index by index; take the user's list as given.
+    if opts.toggle_style_list then
+        M.config.toggle_style_list = opts.toggle_style_list
     end
-    if opts then
-        vim.g.cyberpunk_config = vim.tbl_deep_extend('force', vim.g.cyberpunk_config, opts)
-        if opts.toggle_style_list then    -- this table cannot be extended, it has to be replaced
-            M.set_options('toggle_style_list', opts.toggle_style_list)
-        end
-    end
-    if vim.g.cyberpunk_config.toggle_style_key then
-      vim.api.nvim_set_keymap('n', vim.g.cyberpunk_config.toggle_style_key, '<cmd>lua require("cyberpunk").toggle()<cr>', { noremap = true, silent = true })
+    if M.config.toggle_style_key then
+        vim.keymap.set('n', M.config.toggle_style_key, M.toggle, { desc = 'Cycle cyberpunk styles' })
     end
 end
 
-function M.load()
-  vim.api.nvim_command('colorscheme cyberpunk')
+--- The palette for `style` (default: the current one) with the `colors`
+--- overrides applied. Reading a colour that doesn't exist is an error, so a
+--- typo in a highlight definition fails loudly instead of silently
+--- dropping that colour.
+---@param style string|nil
+function M.palette(style)
+    style = style or M.config.style
+    local base = require('cyberpunk.palette')[style]
+    if not base then
+        error(('cyberpunk: unknown style %q (expected "dark" or "neon")'):format(tostring(style)), 2)
+    end
+    local colors = vim.tbl_extend('force', { none = 'none' }, base, M.config.colors)
+    return setmetatable(colors, {
+        __index = function(_, name)
+            error(('cyberpunk: unknown colour %q'):format(tostring(name)), 2)
+        end,
+    })
+end
+
+--- Applies the theme in `style` (default: the current one). colors/*.lua
+--- call this, so prefer `:colorscheme cyberpunk` / `:colorscheme cyberpunkNeon`.
+---@param style string|nil
+function M.load(style)
+    if vim.fn.has('nvim-0.10') == 0 then
+        vim.notify('cyberpunk needs Neovim 0.10 or newer', vim.log.levels.ERROR)
+        return
+    end
+    -- Resolve the palette first, so a bad style leaves the current colours alone.
+    local colors = M.palette(style)
+    M.config.style = style or M.config.style
+
+    vim.cmd.highlight('clear') -- also unsets g:colors_name
+    if vim.fn.exists('syntax_on') == 1 then
+        vim.cmd.syntax('reset')
+    end
+    vim.o.background = 'dark' -- both styles are dark
+    vim.o.termguicolors = true
+    vim.g.colors_name = M.colorschemes[M.config.style]
+
+    require('cyberpunk.highlights').apply(colors, M.config)
+    if M.config.term_colors then
+        require('cyberpunk.terminal').apply(colors)
+    end
+end
+
+--- Switches to the next style in `toggle_style_list`.
+function M.toggle()
+    local list, current = M.config.toggle_style_list, 0
+    for i, style in ipairs(list) do
+        if style == M.config.style then
+            current = i
+        end
+    end
+    vim.cmd.colorscheme(M.colorschemes[list[current % #list + 1]])
 end
 
 return M

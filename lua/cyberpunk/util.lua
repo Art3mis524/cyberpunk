@@ -1,40 +1,50 @@
-local util = {}
+local M = {}
 
-util.bg = "#000000"
-util.fg = "#ffffff"
-
-local function hexToRgb(hex_str)
-  local hex = "[abcdef0-9][abcdef0-9]"
-  local pat = "^#(" .. hex .. ")(" .. hex .. ")(" .. hex .. ")$"
-  hex_str = string.lower(hex_str)
-
-  assert(string.find(hex_str, pat) ~= nil, "hex_to_rgb: invalid hex_str: " .. tostring(hex_str))
-
-  local r, g, b = string.match(hex_str, pat)
-  return { tonumber(r, 16), tonumber(g, 16), tonumber(b, 16) }
+local function rgb(hex)
+    local r, g, b = hex:lower():match('^#(%x%x)(%x%x)(%x%x)$')
+    assert(r, 'cyberpunk: invalid hex colour: ' .. tostring(hex))
+    return { tonumber(r, 16), tonumber(g, 16), tonumber(b, 16) }
 end
 
----@param fg string foreground color
----@param bg string background color
----@param alpha number number between 0 and 1. 0 results in bg, 1 results in fg
-function util.blend(fg, bg, alpha)
-  bg = hexToRgb(bg)
-  fg = hexToRgb(fg)
-
-  local blendChannel = function(i)
-    local ret = (alpha * fg[i] + ((1 - alpha) * bg[i]))
-    return math.floor(math.min(math.max(0, ret), 255) + 0.5)
-  end
-
-  return string.format("#%02X%02X%02X", blendChannel(1), blendChannel(2), blendChannel(3))
+--- Mixes two colours: alpha 1 gives `fg`, 0 gives `bg`.
+---@param fg string '#rrggbb'
+---@param bg string '#rrggbb'
+---@param alpha number 0..1
+function M.blend(fg, bg, alpha)
+    local f, b = rgb(fg), rgb(bg)
+    local function channel(i)
+        local v = alpha * f[i] + (1 - alpha) * b[i]
+        return math.floor(math.min(math.max(0, v), 255) + 0.5)
+    end
+    return ('#%02X%02X%02X'):format(channel(1), channel(2), channel(3))
 end
 
-function util.darken(hex, amount, bg)
-  return util.blend(hex, bg or util.bg, math.abs(amount))
+--- `hex` faded towards `bg` (black by default); amount 1 leaves it unchanged.
+function M.darken(hex, amount, bg)
+    return M.blend(hex, bg or '#000000', math.abs(amount))
 end
 
-function util.lighten(hex, amount, fg)
-  return util.blend(hex, fg or util.fg, math.abs(amount))
+local ATTRIBUTES = {
+    bold = true, italic = true, reverse = true, standout = true, nocombine = true,
+    strikethrough = true, underline = true, undercurl = true,
+    underdouble = true, underdotted = true, underdashed = true,
+}
+
+--- Turns an onedark-style `fmt` string ("bold,italic", "none") into the
+--- boolean flags nvim_set_hl expects, adding them to `into`.
+---@param fmt string|false|nil
+---@param into table|nil
+function M.attributes(fmt, into)
+    into = into or {}
+    if type(fmt) ~= 'string' then return into end
+    for attr in fmt:lower():gmatch('[^,%s]+') do
+        if ATTRIBUTES[attr] then
+            into[attr] = true
+        elseif attr ~= 'none' then
+            error(('cyberpunk: unknown text attribute %q'):format(attr), 2)
+        end
+    end
+    return into
 end
 
-return util
+return M

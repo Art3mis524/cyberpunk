@@ -1,32 +1,29 @@
-local c = require('cyberpunk.colors')
-local cfg = vim.g.cyberpunk_config
-local colors = {
-    bg = c.bg0,
-    fg = c.fg,
-    red = c.red,
-    green = c.green,
-    yellow = c.yellow,
-    blue = c.blue,
-    purple = c.purple,
-    cyan = c.cyan,
-    gray = c.grey
+-- lualine theme for both styles: lualine re-reads this file on every
+-- :colorscheme, so it follows whichever style is active.
+local cyberpunk = require('cyberpunk')
+local c = cyberpunk.palette()
+local middle = cyberpunk.config.lualine.transparent and c.none or c.bg1
+
+local function mode(color)
+    return { a = { fg = c.bg0, bg = color, gui = 'bold' } }
+end
+
+local theme = {
+    normal = {
+        a = { fg = c.bg0, bg = c.green, gui = 'bold' },
+        b = { fg = c.fg, bg = c.bg3 },
+        c = { fg = c.fg, bg = middle },
+    },
+    inactive = {
+        a = { fg = c.grey, bg = c.bg1, gui = 'bold' },
+        b = { fg = c.grey, bg = c.bg1 },
+        c = { fg = c.grey, bg = middle },
+    },
+    insert = mode(c.blue),
+    visual = mode(c.purple),
+    replace = mode(c.red),
+    command = mode(c.yellow),
+    terminal = mode(c.cyan),
 }
 
-local one_dark = {
-    inactive = {
-        a = {fg = colors.gray, bg = c.bg1, gui = 'bold'},
-        b = {fg = colors.gray, bg = c.bg1},
-        c = {fg = colors.gray, bg = cfg.lualine.transparent and c.none or c.bg1},
-    },
-    normal = {
-        a = {fg = colors.bg, bg = colors.green, gui = 'bold'},
-        b = {fg = colors.fg, bg = c.bg3},
-        c = {fg = colors.fg, bg = cfg.lualine.transparent and c.none or c.bg1},
-    },
-    visual = {a = {fg = colors.bg, bg = colors.purple, gui = 'bold'}},
-    replace = {a = {fg = colors.bg, bg = colors.red, gui = 'bold'}},
-    insert = {a = {fg = colors.bg, bg = colors.blue, gui = 'bold'}},
-    command = {a = {fg = colors.bg, bg = colors.yellow, gui = 'bold'}},
-    terminal = {a = {fg = colors.bg, bg = colors.cyan, gui = 'bold'}},
-}
-return one_dark;
+return theme
